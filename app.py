@@ -18,6 +18,8 @@ from wordcloud import WordCloud
 from spacy.lang.en.stop_words import STOP_WORDS as spacy_stop_words
 from page import Page
 import requests
+import seaborn as sns
+from sklearn.model_selection import StratifiedKFold, cross_val_score
 
 @st.cache
 def load_data():
@@ -44,7 +46,8 @@ def wordcloud_generator(data, title=None):
     
     
 def remove_stopwords(content):
-    custom_stopwords = ("feel","becaus","want","time","realli","im","think","thing","ive","still","littl","one","life","peopl","need","bit","even","much","dont","look","way","love","start","s","m","quot","work")
+    custom_stopwords = ("feel","becaus","want","time","realli","im","think","thing","ive","still","littl","one","life","peopl","need","bit","even","much","dont","look","way","love","start","s","m","quot","work",
+    "get","http","go","day", "com","got","see" "4pm","<BIAS>","veri","know","t","like","someth")
     return hero.remove_stopwords(content, spacy_stop_words.union(custom_stopwords))
     
 def clean(content):
@@ -61,13 +64,34 @@ def page_data():
     st.markdown("### Analyse du Dataset {}".format(current_dataset_name))
     st.markdown("#### Distribution")
     sentiment_names = current_dataset['sentiment'].value_counts().index.tolist()
-    current_dataset['sentiment'].value_counts().sort_values(ascending=False).plot(kind='bar')
-    st.pyplot(plt)
+    # current_dataset['sentiment'].value_counts().sort_values(ascending=False).plot(kind='bar')
+    fig, ax = plt.subplots(figsize=(12, 12))
+    sns.countplot(x="sentiment", data=current_dataset, palette="Set3", dodge=False,  order = current_dataset['sentiment'].value_counts().index)
+    st.pyplot(fig)
     pd.DataFrame(current_dataset.sentiment.value_counts()).T
-    st.markdown("#### Nuage de mots")
+    NUM_TOP_WORDS = 20
     cloud = current_dataset.copy()
     cloud.content = clean(cloud.content)
     cloud.content = remove_stopwords(cloud.content)
+    top_20_before = hero.visualization.top_words(current_dataset['content']).head(NUM_TOP_WORDS)
+    top_20_after = hero.visualization.top_words(cloud['content']).head(NUM_TOP_WORDS)
+
+
+
+    fig, ax = plt.subplots(figsize=(12, 12))
+    top_20_before.plot.bar(rot=90)
+    ax.set_title('Top 20 words before cleaning')
+    st.pyplot(fig)
+
+    fig, ax = plt.subplots(figsize=(12, 12))
+    top_20_after.plot.bar(rot=90)
+    ax.set_title('Top 20 words after cleaning')
+    st.pyplot(fig)
+
+
+    
+    st.markdown("#### Nuage de mots")
+
     for sentiment in sentiment_names:
         wordcloud_generator(cloud.query("sentiment == '{}'".format(sentiment)).content, title=sentiment)
 
@@ -78,10 +102,12 @@ def build_model_svc(df):
     ml.content = remove_stopwords(ml.content)
     X = ml.content
     y = ml.sentiment
+    model = LinearSVC()
+    # skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=17)
+    # cv_results = cross_val_score(model, X, y, cv=skf, scoring='f1_micro')
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, stratify=y)
     tfidf = TfidfVectorizer(min_df = 10, ngram_range=(1,2), stop_words="english")
     X_train_tf = tfidf.fit_transform(X_train)
-    model = LinearSVC()
     model.fit(X_train_tf, y_train)
     X_test_tf = tfidf.transform(X_test)
     y_pred = model.predict(X_test_tf)
@@ -136,8 +162,8 @@ st.sidebar.markdown("### 🤖 Sentiments Detector")
 start_time = time.time()
 kaggle, dataworld = load_data()
 app = Page()
-app.add_page("Detector", page_search)
 app.add_page("Data Analyse", page_data)
+app.add_page("Detector", page_search)
 app.add_page("Modèle 1 SVC", page_model_svc)
 current_dataset_name = st.sidebar.radio('Data',("Kaggle","Dataworld"))
 if current_dataset_name == "Kaggle":
