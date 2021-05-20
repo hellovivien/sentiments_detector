@@ -38,7 +38,7 @@ from lightgbm import LGBMRegressor
 from pytorch_tabnet.tab_model import TabNetClassifier
 from tensorflow.keras.preprocessing.text import Tokenizer
 st.set_option('deprecation.showPyplotGlobalUse', False)
-torch.set_default_tensor_type('torch.cuda.FloatTensor')
+# torch.set_default_tensor_type('torch.cuda.FloatTensor')
 
 
 
