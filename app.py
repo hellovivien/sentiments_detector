@@ -12,6 +12,7 @@ from sklearn.metrics import accuracy_score, recall_score
 from sklearn.metrics import classification_report
 from sklearn.metrics import confusion_matrix
 from sklearn.metrics import plot_confusion_matrix
+from sklearn.naive_bayes import MultinomialNB
 import texthero as hero
 from texthero import stopwords
 from wordcloud import WordCloud
@@ -19,15 +20,42 @@ from spacy.lang.en.stop_words import STOP_WORDS as spacy_stop_words
 from page import Page
 import requests
 import seaborn as sns
+import re
 from sklearn.model_selection import StratifiedKFold, cross_val_score
+import nltk
+from sklearn.linear_model import LogisticRegression
+nltk.download('words')
+import gensim
+import neattext.functions as nfx
+from textblob import TextBlob
+import dexplot as dxp
+from collections import Counter
+from sklearn.linear_model import Ridge, LinearRegression
+from sklearn.svm import SVR
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.ensemble import RandomForestClassifier
+from lightgbm import LGBMRegressor
+from pytorch_tabnet.tab_model import TabNetClassifier
+from tensorflow.keras.preprocessing.text import Tokenizer
+st.set_option('deprecation.showPyplotGlobalUse', False)
+torch.set_default_tensor_type('torch.cuda.FloatTensor')
+
+
 
 @st.cache
 def load_data():
     kaggle = pd.read_csv('Emotion_final.csv', nrows = None)
-    kaggle.rename(columns={"Emotion": "sentiment", "Text": "content"}, inplace=True)
-    kaggle.sentiment = kaggle.sentiment.apply(lambda x: "happiness" if x == "happy" else x)
+    kaggle.rename(columns={"Emotion": "emotion", "Text": "content"}, inplace=True)
+    kaggle.emotion = kaggle.emotion.apply(lambda x: "happiness" if x == "happy" else x)
     dataworld = pd.read_csv('text_emotion.csv', nrows = None)
     dataworld.drop(columns=["tweet_id", "author"], inplace=True)
+    dataworld.rename(columns={"sentiment": "emotion"}, inplace=True)
+    kaggle['sentiment'] = kaggle.content.apply(get_sentiment)
+    dataworld['sentiment'] = dataworld.content.apply(get_sentiment)
+    kaggle['clean_content'] = clean(kaggle.content)
+    kaggle['clean_content'] = remove_stopwords(kaggle.clean_content)
+    dataworld['clean_content'] = clean(dataworld.content)
+    dataworld['clean_content'] = remove_stopwords(dataworld.clean_content)
     return kaggle, dataworld
 
 
@@ -36,47 +64,75 @@ def wordcloud_generator(data, title=None):
                           background_color ='black',
                           min_font_size = 10
                          ).generate(" ".join(data.values))
-    # plot the WordCloud image                        
-    plt.figure(figsize = (8, 8), facecolor = None) 
-    plt.imshow(wordcloud, interpolation='bilinear') 
-    plt.axis("off") 
-    plt.tight_layout(pad = 0) 
-    plt.title(title,fontsize=30)
-    st.pyplot(plt)
+    st.write(title)
+    st.image(wordcloud.to_image())
+
+
+def extract_keywords(text,num=50):
+    tokens = [token for token in text.split()]
+    most_common_tokens = Counter(tokens).most_common(num)
+    return pd.DataFrame(most_common_tokens, columns=('token','count'))
+
+def plot_keywords(df,title='Title'):
+    fig = plt.figure(figsize=(40,20))
+    plt.title(title)
+    sns.set(font_scale=1.1)
+    sns.barplot(y='token',x='count',data=df,orient="h")
+#     plt.xticks(rotation=45)
+    st.pyplot()
     
     
 def remove_stopwords(content):
-    custom_stopwords = ("feel","becaus","want","time","realli","im","think","thing","ive","still","littl","one","life","peopl","need","bit","even","much","dont","look","way","love","start","s","m","quot","work",
+    custom_stopwords = ("feeling","feel","becaus","want","time","realli","im","think","thing","ive","still","littl","one","life","peopl","need","bit","even","much","dont","look","way","love","start","s","m","quot","work",
     "get","http","go","day", "com","got","see" "4pm","<BIAS>","veri","know","t","like","someth")
     return hero.remove_stopwords(content, spacy_stop_words.union(custom_stopwords))
     
 def clean(content):
-    content = hero.remove_diacritics(content)
-    content = hero.remove_urls(content)
-    content = hero.preprocessing.remove_digits(content)
-    content = hero.remove_punctuation(content)
-    content = hero.remove_whitespace(content)
-    content = hero.preprocessing.stem(content)
+    import neattext.functions as nfx
+    cleaning_steps = ('clean_text','remove_stopwords','remove_userhandles','remove_punctuations')
+    for step in cleaning_steps:
+        content = content.apply(getattr(nfx, step))
+    # content = hero.remove_diacritics(content)
+    # content = hero.remove_urls(content)
+    # content = hero.preprocessing.remove_digits(content)
+    # content = hero.remove_punctuation(content)
+    # content = hero.remove_whitespace(content)
+    # content = hero.preprocessing.stem(content)
     return content
+
+
+
+def get_sentiment(text):
+    blob = TextBlob(text)
+    sentiment = blob.sentiment.polarity
+    if sentiment > 0:
+        return 'positive'
+    elif sentiment < 0:
+        return 'negative'
+    else:
+        return 'neutral'
 
 
 def page_data():
     st.markdown("### Analyse du Dataset {}".format(current_dataset_name))
     st.markdown("#### Distribution")
-    sentiment_names = current_dataset['sentiment'].value_counts().index.tolist()
-    # current_dataset['sentiment'].value_counts().sort_values(ascending=False).plot(kind='bar')
+    emotion_names = current_dataset['emotion'].value_counts().index.tolist()
     fig, ax = plt.subplots(figsize=(12, 12))
-    sns.countplot(x="sentiment", data=current_dataset, palette="Set3", dodge=False,  order = current_dataset['sentiment'].value_counts().index)
+    sns.countplot(x='emotion',data=current_dataset,order=current_dataset.emotion.value_counts().index)
     st.pyplot(fig)
-    pd.DataFrame(current_dataset.sentiment.value_counts()).T
+    pd.DataFrame(current_dataset.emotion.value_counts()).T
+    st.write("Certaines émotions ne disposent pas d'assez de données et risquent de diminuer la pertinence de notre modèle.")
+
+    fig, ax = plt.subplots(figsize=(12, 12))
+    # dxp.count('emotion', data=current_dataset, split='sentiment', normalize='emotion')
+    sns.catplot(data=current_dataset,x='emotion',hue='sentiment',kind='count',size=7,aspect=1.5)
+    st.pyplot()
+    st.write("Les sentiments detectés ne correspondent pas toujours aux émotions associés. Notemment les émotions négatives comme la colère, la tristesse ou l'inquiètude sont perçus aussi bien de manière positive, négative ou neutre.")
+
+
     NUM_TOP_WORDS = 20
-    cloud = current_dataset.copy()
-    cloud.content = clean(cloud.content)
-    cloud.content = remove_stopwords(cloud.content)
     top_20_before = hero.visualization.top_words(current_dataset['content']).head(NUM_TOP_WORDS)
-    top_20_after = hero.visualization.top_words(cloud['content']).head(NUM_TOP_WORDS)
-
-
+    top_20_after = hero.visualization.top_words(current_dataset['clean_content']).head(NUM_TOP_WORDS)
 
     fig, ax = plt.subplots(figsize=(12, 12))
     top_20_before.plot.bar(rot=90)
@@ -92,31 +148,71 @@ def page_data():
     
     st.markdown("#### Nuage de mots")
 
-    for sentiment in sentiment_names:
-        wordcloud_generator(cloud.query("sentiment == '{}'".format(sentiment)).content, title=sentiment)
+    for emotion in emotion_names:
+        wordcloud_generator(current_dataset.query("emotion == '{}'".format(emotion)).clean_content, title=emotion)
+        corpus = current_dataset.query("emotion == '{}'".format(emotion)).clean_content.tolist()
+        corpus = ' '.join(corpus)
+        keywords = extract_keywords(corpus)
+        plot_keywords(keywords)
 
 @st.cache
-def build_model_svc(df):
+def build_model(df, model, model_name):
     ml = df.copy()
-    ml.content = clean(ml.content)
-    ml.content = remove_stopwords(ml.content)
-    X = ml.content
-    y = ml.sentiment
-    model = LinearSVC()
+    X = ml.clean_content
+    y = ml.emotion
     # skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=17)
     # cv_results = cross_val_score(model, X, y, cv=skf, scoring='f1_micro')
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, stratify=y)
-    tfidf = TfidfVectorizer(min_df = 10, ngram_range=(1,2), stop_words="english")
-    X_train_tf = tfidf.fit_transform(X_train)
-    model.fit(X_train_tf, y_train)
-    X_test_tf = tfidf.transform(X_test)
-    y_pred = model.predict(X_test_tf)
-    return model, X_test_tf, y_test, y_pred, tfidf
+    if model_name != "tabnet":
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, stratify=y)
+        tfidf = TfidfVectorizer(min_df = 10, ngram_range=(1,2), stop_words="english")
+        X_train_tf = tfidf.fit_transform(X_train)
+        model.fit(X_train_tf, y_train)
+        X_test_tf = tfidf.transform(X_test)
+        y_pred = model.predict(X_test_tf)
+        return model, X_test_tf, y_test, y_pred, tfidf
+    else:
+        tok = Tokenizer(num_words=1000, oov_token='<UNK>')
+        tok.fit_on_texts(X)
+        X = tok.texts_to_matrix(X, mode='tfidf')
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, stratify=y)
+        model.fit(
+            X_train=X_train, y_train=y_train,
+            eval_set=[(X_train, y_train),(X_test, y_test)], 
+            eval_name=['train', 'valid'],
+            eval_metric=['accuracy', 'balanced_accuracy', 'logloss']
+        )
+        preds_mapper = { idx : class_name for idx, class_name in enumerate(model.classes_)}
+        preds = model.predict_proba(X_test)
+        y_pred = np.vectorize(preds_mapper.get)(np.argmax(preds, axis=1))
+        test_acc = accuracy_score(y_pred=y_pred, y_true=y_test)
+        print(f"BEST VALID SCORE : {model.best_cost}")
+        print(f"FINAL TEST SCORE : {test_acc}")        
+        plt.plot(model.history['loss'])
+        st.pyplot()
+        plt.plot(model.history['train_accuracy'], label = "train_accuracy")
+        plt.plot(model.history['valid_accuracy'], label = "valid_accuracy")
+        plt.legend()
+        st.pyplot()
 
+        
+def make_svc():
+    ml("Linear Support Vector", model=LinearSVC())
+def make_nb():
+    ml("Naive Bayes", model=MultinomialNB())
+def make_log():
+    ml("Logistic Regression", model=LogisticRegression())
+def make_rf():
+    ml("KNN", model=RandomForestClassifier())
+def make_knn():
+    ml("Random Forest", model=KNeighborsClassifier())
+def make_lgbm():
+    ml("Linear SVC", model=LGBMRegressor())
+def make_tabnet():
+    ml("TabNet", model=TabNetClassifier())
 
-def page_model_svc():
-    st.markdown("### Modèle 1: TfidfVectorizer + LinearSVC")
-    model, X_test_tf, y_test, y_pred, _ = build_model_svc(current_dataset)
+def ml(title, model):
+    st.markdown("### Machine Learning : {}".format(title))
+    model, X_test_tf, y_test, y_pred, _ = build_model(current_dataset, model, title.lower())
     st.write('Accuracy Score - {}'.format(accuracy_score(y_test, y_pred)))
     st.write('Recall Score (macro) - {}'.format(recall_score(y_test, y_pred,average='macro')))
     fig, ax = plt.subplots(figsize=(12, 12))
@@ -130,10 +226,10 @@ def page_model_svc():
     if current_dataset_name == "Kaggle":
         st.markdown("""
         La metric la plus important est le **recall** puisque on cherche à minimiser l'érreur sur l'ensemble de notre jeu de données et pas juste sur une partir de nos prédictions,
-        autrement dit bien identifier *happy* a autant d'importance que bien identifier *love* ou n'importe quel autre sentiment.
-        On observe que notre modèle a d'assez bons résultats pour détecter les sentiments *happy* et *sadness* mais que le sentiment *love* est souvent identifier comme *happy* et *surprise* comme *fear* ou *happy*. 
-        Cela vient du fait que d'une part nous avons plus de données pour les sentiments happy et sadness et que d'autres part 
-        il est difficile plus difficile de différencier des sentiments qui peuvent être plus ambigue comme la surprise qui peut aussi évoqué la joie et la peur.
+        autrement dit bien identifier *happy* a autant d'importance que bien identifier *love* ou n'importe quel autre émotion.
+        On observe que notre modèle a d'assez bons résultats pour détecter les émotions *happy* et *sadness* mais que l'émotion *love* est souvent identifier comme *happy* et *surprise* comme *fear* ou *happy*. 
+        Cela vient du fait que d'une part nous avons plus de données pour les émotions happy et sadness et que d'autres part 
+        il est difficile plus difficile de différencier des émotions qui peuvent être plus ambigue comme la surprise qui peut aussi évoqué la joie et la peur.
         """)
     else:
         st.markdown("""
@@ -143,13 +239,13 @@ def page_model_svc():
 
 def page_search():
     search_input = st.text_input('Tell me something...', '')
-    model, X_test_tf, y_test, y_pred, tfidf = build_model_svc(kaggle)
+    model, X_test_tf, y_test, y_pred, tfidf = build_model(kaggle, LinearSVC())
     if len(search_input)>0:
         search_tf = tfidf.transform([search_input])
         predictions = model.predict(search_tf)
-        sentiment = predictions[0]
-        st.write(sentiment)
-        response = requests.get("https://api.giphy.com/v1/gifs/random?api_key=u5zI8PiTKx0y7b6Csh5GmUdhgD0hZ315&tag={}&rating=g".format(sentiment))
+        emotion = predictions[0]
+        st.write(emotion)
+        response = requests.get("https://api.giphy.com/v1/gifs/random?api_key=u5zI8PiTKx0y7b6Csh5GmUdhgD0hZ315&tag={}&rating=g".format(emotion))
         image_url = response.json()["data"]["image_original_url"]
         st.image(image_url)
 
@@ -158,14 +254,19 @@ def page_search():
 ###
 # MAIN
 ###
-st.sidebar.markdown("### 🤖 Sentiments Detector")
+st.sidebar.markdown("### 🤖 Emotions Detector")
 start_time = time.time()
 kaggle, dataworld = load_data()
 app = Page()
-app.add_page("Detector", page_search)
+app.add_page("TabNet", make_tabnet)
 app.add_page("Data Analyse", page_data)
-app.add_page("Modèle 1 SVC", page_model_svc)
-current_dataset_name = st.sidebar.radio('Data',("Kaggle","Dataworld"))
+app.add_page("Linear Support Vector", make_svc)
+app.add_page("Naive Bayes", make_nb)
+app.add_page("Logistic Regression", make_log)
+app.add_page("KNN", make_knn)
+app.add_page("Random Forest", make_rf)
+app.add_page("Detector", page_search)
+current_dataset_name = st.sidebar.radio('Data',("Dataworld","Kaggle"))
 if current_dataset_name == "Kaggle":
     current_dataset = kaggle
 else:
