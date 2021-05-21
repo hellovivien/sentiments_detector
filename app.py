@@ -171,15 +171,15 @@ def delete_pseudo(txt):
     return ' '.join(word for word in txt.split(' ') if not word.startswith('@'))
 
 
-def lemmatize_text(text):
-    '''
-    lemmatization of text
-    :param text: string
-    :return: lemmatize and tokenize text (list)
-    '''
-    w_tokenizer = nltk.tokenize.WhitespaceTokenizer()
-    lemmatizer = nltk.stem.WordNetLemmatizer()
-    return [lemmatizer.lemmatize(w) for w in w_tokenizer.tokenize(text)]
+# def lemmatize_text(text):
+#     '''
+#     lemmatization of text
+#     :param text: string
+#     :return: lemmatize and tokenize text (list)
+#     '''
+#     w_tokenizer = nltk.tokenize.WhitespaceTokenizer()
+#     lemmatizer = nltk.stem.WordNetLemmatizer()
+#     return [lemmatizer.lemmatize(w) for w in w_tokenizer.tokenize(text)]
 
 
 
