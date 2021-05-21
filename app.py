@@ -47,7 +47,7 @@ import pathlib
 
 LOAD_MODEL = True
 
-# @st.cache(allow_output_mutation=True)
+@st.cache(allow_output_mutation=True)
 def load_data():
     kaggle = pd.read_csv('Emotion_final.csv', nrows = None)
     kaggle.rename(columns={"Emotion": "emotion", "Text": "content"}, inplace=True)
@@ -89,7 +89,7 @@ def plot_keywords(df,title='Title'):
     
 def remove_stopwords(content):
     custom_stopwords = ("feeling","feel","becaus","want","time","realli","im","think","thing","ive","still","littl","one","life","peopl","need","bit","even","much","dont","look","way","love","start","s","m","quot","work",
-    "get","http","go","day", "com","got","see" "4pm","<BIAS>","veri","know","t","like","someth")
+    "get","http","go","day", "com","got","see" "4pm","<BIAS>","veri","know","t","like","someth","good","going","today","u","new","cant","people","little","pretty","things")
     return hero.remove_stopwords(content, spacy_stop_words.union(custom_stopwords))
     
 def clean(content):
@@ -119,7 +119,7 @@ def get_sentiment(text):
     else:
         return 'neutral'
 
-
+# @st.cache(allow_output_mutation=True)
 def page_data():
     st.markdown("### Analyse du Dataset {}".format(current_dataset_name))
     st.markdown("#### Distribution")
@@ -150,8 +150,6 @@ def page_data():
     top_20_after.plot.bar(rot=90)
     ax.set_title('Top 20 words after cleaning')
     st.pyplot(fig)
-
-
     
     st.markdown("#### Nuage de mots")
 
@@ -264,7 +262,7 @@ def make_tabnet():
 
         
 
-# @st.cache(allow_output_mutation=True)
+@st.cache(allow_output_mutation=True)
 def build_model(df, model, model_name):
     ml = df.copy()
     X = ml.clean_content
@@ -294,6 +292,7 @@ def make_knn():
     ml("KNN", model=KNeighborsClassifier())
 def make_lgbm():
     ml("Linear SVC", model=LGBMRegressor())
+
 
 def ml(title, model):
     st.markdown("### Machine Learning : {}".format(title))
