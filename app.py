@@ -406,7 +406,7 @@ app.add_page("FastText", make_ft)
 app.add_page("Linear Support Vector", make_svc)
 app.add_page("Naive Bayes", make_nb)
 app.add_page("Logistic Regression", make_log)
-app.add_page("KNN", make_knn)
+# app.add_page("KNN", make_knn)
 app.add_page("Random Forest", make_rf)
 
 current_dataset_name = st.sidebar.radio('Data',("Dataworld","Kaggle"))
