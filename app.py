@@ -27,7 +27,7 @@ from sklearn.linear_model import LogisticRegression
 # nltk.download('words')
 import gensim
 import neattext.functions as nfx
-from textblob import TextBlob
+from textblob import TextBlob, Word
 import dexplot as dxp
 from collections import Counter
 from sklearn.linear_model import Ridge, LinearRegression
@@ -47,7 +47,7 @@ import pathlib
 
 LOAD_MODEL = True
 
-@st.cache(allow_output_mutation=True)
+# @st.cache(allow_output_mutation=True)
 def load_data():
     kaggle = pd.read_csv('Emotion_final.csv', nrows = None)
     kaggle.rename(columns={"Emotion": "emotion", "Text": "content"}, inplace=True)
@@ -205,9 +205,9 @@ def cleaning_text(df_name):
     # remove digits
     df_name['clean_content'] = hero.preprocessing.remove_digits(df_name['clean_content'], only_blocks=False)
     # lemmatisation
-    df_name['clean_content'] = df_name['clean_content'].apply(lemmatize_text)
+    # df_name['clean_content'] = df_name['clean_content'].apply(lemmatize_text)
 
-@st.cache(allow_output_mutation=True)
+# @st.cache(allow_output_mutation=True)
 def build_tabnet():
         model_file_name = 'tabnet_model_{}'.format(current_dataset_name)
         
@@ -264,7 +264,7 @@ def make_tabnet():
 
         
 
-@st.cache(allow_output_mutation=True)
+# @st.cache(allow_output_mutation=True)
 def build_model(df, model, model_name):
     ml = df.copy()
     X = ml.clean_content
