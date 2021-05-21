@@ -26,6 +26,7 @@ from sklearn.model_selection import StratifiedKFold, cross_val_score
 from sklearn.linear_model import LogisticRegression
 # nltk.download('words')
 import gensim
+import neattext as nt
 import neattext.functions as nfx
 from textblob import TextBlob, Word
 import dexplot as dxp
@@ -44,6 +45,7 @@ import torch
 torch.set_default_tensor_type('torch.FloatTensor')
 # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 import pathlib
+import pickle
 
 
 LOAD_MODEL = True
@@ -139,6 +141,28 @@ def page_data():
     st.pyplot()
     st.write("Les sentiments detectés ne correspondent pas toujours aux émotions associés. Notemment les émotions négatives comme la colère, la tristesse ou l'inquiètude sont perçus aussi bien de manière positive, négative ou neutre.")
 
+    st.write("Corpus Unclean")
+    corpus = current_dataset.content.tolist()
+    corpus = ' '.join(corpus)
+    docx = nt.TextFrame(corpus)
+    docx.text = corpus
+    # st.write(docx.describe())
+    st.write("Noise Scan")
+    st.write(docx.noise_scan())
+    st.write("Lexical Richness")
+    st.write(docx.lexical_richness())
+
+    st.write("Corpus Clean")
+    corpus = current_dataset.clean_content.tolist()
+    corpus = ' '.join(corpus)
+    docx = nt.TextFrame(corpus)
+    docx.text = corpus
+    # st.write(docx.describe())
+    st.write("Noise Scan")
+    st.write(docx.noise_scan())
+    st.write("Lexical Richness")
+    st.write(docx.lexical_richness())
+
 
     NUM_TOP_WORDS = 20
     top_20_before = hero.visualization.top_words(current_dataset['content']).head(NUM_TOP_WORDS)
@@ -216,7 +240,7 @@ def build_tabnet():
         
         df = current_dataset.copy()
         cleaning_text(df)
-
+        
         X = df['clean_content']
         y = df['emotion']
         # tokenize la data
@@ -233,16 +257,16 @@ def build_tabnet():
         X_train = tok.texts_to_matrix(X_train, mode='tfidf')
         # X_train, X_valid, y_train, y_valid = train_test_split(X, y, test_size=0.3, stratify=y)
         # build model, fit and predict
-        model = TabNetClassifier()
-        # if LOAD_MODEL and pathlib.Path('{}.zip'.format(model_file_name)).exists():
-        #     model.load_model('{}.zip'.format(model_file_name))
-        # else:
-        model.fit(
-            X_train=X_train, y_train=y_train,
-            eval_set=[(X_train, y_train), (X_test, y_test)],
-            eval_name=['train', 'valid'],
-            eval_metric=['accuracy', 'balanced_accuracy', 'logloss']
-        )
+        if LOAD_MODEL and pathlib.Path(model_file_name).exists():
+            model = pickle.load(open(model_file_name, 'rb'))
+        else:
+            model = TabNetClassifier()
+            model.fit(
+                X_train=X_train, y_train=y_train,
+                eval_set=[(X_train, y_train), (X_test, y_test)],
+                eval_name=['train', 'valid'],
+                eval_metric=['accuracy', 'balanced_accuracy', 'logloss']
+            )
         
 
         preds_mapper = {idx: class_name for idx, class_name in enumerate(model.classes_)}
@@ -250,6 +274,7 @@ def build_tabnet():
         y_pred_proba = np.vectorize(preds_mapper.get)(np.argmax(preds, axis=1))
         y_pred = model.predict(X_test)
         test_acc = accuracy_score(y_pred=y_pred, y_true=y_test)
+        pickle.dump(model, open(model_file_name, 'wb'))
         # model.save_model(model_file_name)
         return model, y_test, y_pred, test_acc
 
