@@ -46,6 +46,7 @@ torch.set_default_tensor_type('torch.FloatTensor')
 # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 import pathlib
 import pickle
+import fasttext
 
 
 LOAD_MODEL = True
@@ -208,6 +209,31 @@ def delete_pseudo(txt):
 #     lemmatizer = nltk.stem.WordNetLemmatizer()
 #     return [lemmatizer.lemmatize(w) for w in w_tokenizer.tokenize(text)]
 
+def make_ft():
+    LOAD_MODEL = True
+    model_file_name = "fasttext_{}.bin".format(current_dataset_name)
+    df = current_dataset.copy()
+    y = df.emotion
+    X_train, X_test, y_train, y_test = train_test_split(df, y, random_state=1, stratify=y)
+    with open('train.txt', 'w') as f:
+        for each_text, each_label in zip(X_train.clean_content, X_train.emotion):
+            f.writelines(f'__label__{each_label} {each_text}\n')
+    with open('test.txt', 'w') as f:
+        for each_text, each_label in zip(X_test.clean_content, X_test.emotion):
+            f.writelines(f'__label__{each_label} {each_text}\n')
+
+    if LOAD_MODEL and pathlib.Path(model_file_name).exists():
+            model = fasttext.load_model(model_file_name)
+    else:
+        model = fasttext.train_supervised("train.txt")
+    
+    model.save_model(model_file_name)
+    st.write("vocabulary size: {}".format(len(model.words)))
+    N, p, r = model.test('test.txt')
+    st.write("Precision\t{:.3f}".format(p))
+    st.write("Recall \t{:.3f}".format(r))
+    st.write("i'm so happy today because it's my birthday")
+    st.write(model.predict("i'm so happy today because it's my birthday",k=3))
 
 
 def cleaning_text(df_name):
@@ -376,6 +402,7 @@ app = Page()
 app.add_page("Data Analyse", page_data)
 app.add_page("Detector", page_search)
 app.add_page("TabNet", make_tabnet)
+app.add_page("FastText", make_ft)
 app.add_page("Linear Support Vector", make_svc)
 app.add_page("Naive Bayes", make_nb)
 app.add_page("Logistic Regression", make_log)
