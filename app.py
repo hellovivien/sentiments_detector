@@ -34,15 +34,20 @@ from sklearn.linear_model import Ridge, LinearRegression
 from sklearn.svm import SVR
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.ensemble import RandomForestClassifier
+from nltk.stem import WordNetLemmatizer
 from lightgbm import LGBMRegressor
 from pytorch_tabnet.tab_model import TabNetClassifier
 from tensorflow.keras.preprocessing.text import Tokenizer
 st.set_option('deprecation.showPyplotGlobalUse', False)
-# torch.set_default_tensor_type('torch.cuda.FloatTensor')
+import torch
+torch.set_default_tensor_type('torch.FloatTensor')
+# device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+import pathlib
 
 
+LOAD_MODEL = True
 
-@st.cache
+@st.cache(allow_output_mutation=True)
 def load_data():
     kaggle = pd.read_csv('Emotion_final.csv', nrows = None)
     kaggle.rename(columns={"Emotion": "emotion", "Text": "content"}, inplace=True)
@@ -92,15 +97,17 @@ def clean(content):
     cleaning_steps = ('clean_text','remove_stopwords','remove_userhandles','remove_punctuations')
     for step in cleaning_steps:
         content = content.apply(getattr(nfx, step))
-    # content = hero.remove_diacritics(content)
-    # content = hero.remove_urls(content)
-    # content = hero.preprocessing.remove_digits(content)
+    content = hero.remove_diacritics(content)
+    content = hero.remove_urls(content)
+    content = hero.preprocessing.remove_digits(content)
     # content = hero.remove_punctuation(content)
     # content = hero.remove_whitespace(content)
     # content = hero.preprocessing.stem(content)
     return content
 
-
+def predict_emotion(X,model):
+    prediction = model.predict(X)
+    return dict(zip(model.classes_, model.predict_proba(X)[0]))
 
 def get_sentiment(text):
     blob = TextBlob(text)
@@ -155,7 +162,109 @@ def page_data():
         keywords = extract_keywords(corpus)
         plot_keywords(keywords)
 
-@st.cache
+def delete_pseudo(txt):
+    '''
+    delete the pseudo starting with @ in content
+    :param txt: content(string)
+    :return: the "clean_content" without pseudo (string)
+    '''
+    return ' '.join(word for word in txt.split(' ') if not word.startswith('@'))
+
+
+def lemmatize_text(text):
+    '''
+    lemmatization of text
+    :param text: string
+    :return: lemmatize and tokenize text (list)
+    '''
+    w_tokenizer = nltk.tokenize.WhitespaceTokenizer()
+    lemmatizer = nltk.stem.WordNetLemmatizer()
+    return [lemmatizer.lemmatize(w) for w in w_tokenizer.tokenize(text)]
+
+
+
+def cleaning_text(df_name):
+    '''
+    All the steps of preprocessing
+    :param df_name: name of the df on wich the content column must be preprocessed
+    :return: a "clea_content" column
+    '''
+    # delete pseudo strating with @
+    df_name['clean_content'] = df_name['content'].apply(delete_pseudo)
+    # method clean from texthero
+    df_name['clean_content'] = hero.clean(df_name['clean_content'])
+    # delete stopwords with texthero
+    default_stopwords = stopwords.DEFAULT
+    custom_stopwords = default_stopwords.union(
+        set(["feel", "feeling", "im", "get", "http", "ive", "go", "day", "com", "got", "see" "4pm"]))
+    df_name['clean_content'] = hero.remove_stopwords(df_name['clean_content'], custom_stopwords)
+    # remove urls
+    df_name['clean_content'] = hero.remove_urls(df_name['clean_content'])
+    # remove angle brakets
+    df_name['clean_content'] = hero.remove_angle_brackets(df_name['clean_content'])
+    # remove digits
+    df_name['clean_content'] = hero.preprocessing.remove_digits(df_name['clean_content'], only_blocks=False)
+    # lemmatisation
+    df_name['clean_content'] = df_name['clean_content'].apply(lemmatize_text)
+
+@st.cache(allow_output_mutation=True)
+def build_tabnet():
+        model_file_name = 'tabnet_model_{}'.format(current_dataset_name)
+        
+        df = current_dataset.copy()
+        cleaning_text(df)
+
+        X = df['clean_content']
+        y = df['emotion']
+        # tokenize la data
+        tok = Tokenizer(num_words=1000, oov_token='<UNK>')
+        # fit le model avec les données de train
+        # tok.fit_on_texts(X)
+        # X = tok.texts_to_matrix(X, mode='tfidf')
+        # split data
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.33, stratify=y, random_state=1)
+        X_test_save = X_test
+        tok.fit_on_texts(X_test)
+        X_test = tok.texts_to_matrix(X_test, mode='tfidf')
+        tok.fit_on_texts(X_train)
+        X_train = tok.texts_to_matrix(X_train, mode='tfidf')
+        # X_train, X_valid, y_train, y_valid = train_test_split(X, y, test_size=0.3, stratify=y)
+        # build model, fit and predict
+        model = TabNetClassifier()
+        # if LOAD_MODEL and pathlib.Path('{}.zip'.format(model_file_name)).exists():
+        #     model.load_model('{}.zip'.format(model_file_name))
+        # else:
+        model.fit(
+            X_train=X_train, y_train=y_train,
+            eval_set=[(X_train, y_train), (X_test, y_test)],
+            eval_name=['train', 'valid'],
+            eval_metric=['accuracy', 'balanced_accuracy', 'logloss']
+        )
+        
+
+        preds_mapper = {idx: class_name for idx, class_name in enumerate(model.classes_)}
+        preds = model.predict_proba(X_test)
+        y_pred_proba = np.vectorize(preds_mapper.get)(np.argmax(preds, axis=1))
+        y_pred = model.predict(X_test)
+        test_acc = accuracy_score(y_pred=y_pred, y_true=y_test)
+        # model.save_model(model_file_name)
+        return model, y_test, y_pred, test_acc
+
+
+def make_tabnet():
+        model, y_test, y_pred, test_acc = build_tabnet()
+        st.text('Model Report:\n ' + classification_report(y_test, y_pred))
+        st.write(f"BEST VALID SCORE FOR {current_dataset_name} : {model.best_cost}")
+        st.write(f"FINAL TEST SCORE FOR {current_dataset_name} : {test_acc}")
+        plt.plot(model.history['train_accuracy'], label="train_accuracy")
+        plt.plot(model.history['valid_accuracy'], label="valid_accuracy")
+        plt.legend()
+
+        st.pyplot(plt)
+
+        
+
+@st.cache(allow_output_mutation=True)
 def build_model(df, model, model_name):
     ml = df.copy()
     X = ml.clean_content
@@ -170,29 +279,7 @@ def build_model(df, model, model_name):
         X_test_tf = tfidf.transform(X_test)
         y_pred = model.predict(X_test_tf)
         return model, X_test_tf, y_test, y_pred, tfidf
-    else:
-        tok = Tokenizer(num_words=1000, oov_token='<UNK>')
-        tok.fit_on_texts(X)
-        X = tok.texts_to_matrix(X, mode='tfidf')
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, stratify=y)
-        model.fit(
-            X_train=X_train, y_train=y_train,
-            eval_set=[(X_train, y_train),(X_test, y_test)], 
-            eval_name=['train', 'valid'],
-            eval_metric=['accuracy', 'balanced_accuracy', 'logloss']
-        )
-        preds_mapper = { idx : class_name for idx, class_name in enumerate(model.classes_)}
-        preds = model.predict_proba(X_test)
-        y_pred = np.vectorize(preds_mapper.get)(np.argmax(preds, axis=1))
-        test_acc = accuracy_score(y_pred=y_pred, y_true=y_test)
-        print(f"BEST VALID SCORE : {model.best_cost}")
-        print(f"FINAL TEST SCORE : {test_acc}")        
-        plt.plot(model.history['loss'])
-        st.pyplot()
-        plt.plot(model.history['train_accuracy'], label = "train_accuracy")
-        plt.plot(model.history['valid_accuracy'], label = "valid_accuracy")
-        plt.legend()
-        st.pyplot()
+
 
         
 def make_svc():
@@ -207,8 +294,6 @@ def make_knn():
     ml("Random Forest", model=KNeighborsClassifier())
 def make_lgbm():
     ml("Linear SVC", model=LGBMRegressor())
-def make_tabnet():
-    ml("TabNet", model=TabNetClassifier())
 
 def ml(title, model):
     st.markdown("### Machine Learning : {}".format(title))
@@ -239,7 +324,7 @@ def ml(title, model):
 
 def page_search():
     search_input = st.text_input('Tell me something...', '')
-    model, X_test_tf, y_test, y_pred, tfidf = build_model(kaggle, LinearSVC())
+    model, X_test_tf, y_test, y_pred, tfidf = build_model(kaggle, LinearSVC(), "test")
     if len(search_input)>0:
         search_tf = tfidf.transform([search_input])
         predictions = model.predict(search_tf)
@@ -258,6 +343,7 @@ st.sidebar.markdown("### 🤖 Emotions Detector")
 start_time = time.time()
 kaggle, dataworld = load_data()
 app = Page()
+app.add_page("Detector", page_search)
 app.add_page("TabNet", make_tabnet)
 app.add_page("Data Analyse", page_data)
 app.add_page("Linear Support Vector", make_svc)
@@ -265,7 +351,7 @@ app.add_page("Naive Bayes", make_nb)
 app.add_page("Logistic Regression", make_log)
 app.add_page("KNN", make_knn)
 app.add_page("Random Forest", make_rf)
-app.add_page("Detector", page_search)
+
 current_dataset_name = st.sidebar.radio('Data',("Dataworld","Kaggle"))
 if current_dataset_name == "Kaggle":
     current_dataset = kaggle
