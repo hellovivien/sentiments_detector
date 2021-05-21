@@ -300,13 +300,12 @@ def ml(title, model):
     model, X_test_tf, y_test, y_pred, _ = build_model(current_dataset, model, title.lower())
     st.write('Accuracy Score - {}'.format(accuracy_score(y_test, y_pred)))
     st.write('Recall Score (macro) - {}'.format(recall_score(y_test, y_pred,average='macro')))
-    fig, ax = plt.subplots(figsize=(12, 12))
+    fig, ax = plt.subplots(figsize=(10, 10))
     plot_confusion_matrix(model,X_test_tf,
                         y_test,
                         normalize='true',
-                        cmap=plt.cm.Greens,
                         ax=ax)
-    st.pyplot(plt)
+    st.pyplot()
     st.text('Model Report:\n ' + classification_report(y_test, y_pred))
     if current_dataset_name == "Kaggle":
         st.markdown("""
