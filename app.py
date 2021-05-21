@@ -22,7 +22,7 @@ import requests
 import seaborn as sns
 import re
 from sklearn.model_selection import StratifiedKFold, cross_val_score
-import nltk
+# import nltk
 from sklearn.linear_model import LogisticRegression
 # nltk.download('words')
 import gensim
