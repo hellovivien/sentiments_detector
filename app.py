@@ -24,7 +24,7 @@ import re
 from sklearn.model_selection import StratifiedKFold, cross_val_score
 import nltk
 from sklearn.linear_model import LogisticRegression
-nltk.download('words')
+# nltk.download('words')
 import gensim
 import neattext.functions as nfx
 from textblob import TextBlob
@@ -289,9 +289,9 @@ def make_nb():
 def make_log():
     ml("Logistic Regression", model=LogisticRegression())
 def make_rf():
-    ml("KNN", model=RandomForestClassifier())
+    ml("Random Forest", model=RandomForestClassifier())
 def make_knn():
-    ml("Random Forest", model=KNeighborsClassifier())
+    ml("KNN", model=KNeighborsClassifier())
 def make_lgbm():
     ml("Linear SVC", model=LGBMRegressor())
 
