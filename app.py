@@ -39,6 +39,7 @@ from lightgbm import LGBMRegressor
 from pytorch_tabnet.tab_model import TabNetClassifier
 from tensorflow.keras.preprocessing.text import Tokenizer
 st.set_option('deprecation.showPyplotGlobalUse', False)
+pd.set_option('display.max_colwidth', None)
 import torch
 torch.set_default_tensor_type('torch.FloatTensor')
 # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -126,6 +127,7 @@ def page_data():
     emotion_names = current_dataset['emotion'].value_counts().index.tolist()
     fig, ax = plt.subplots(figsize=(12, 12))
     sns.countplot(x='emotion',data=current_dataset,order=current_dataset.emotion.value_counts().index)
+    plt.xticks(rotation=45)
     st.pyplot(fig)
     pd.DataFrame(current_dataset.emotion.value_counts()).T
     st.write("Certaines émotions ne disposent pas d'assez de données et risquent de diminuer la pertinence de notre modèle.")
@@ -133,6 +135,7 @@ def page_data():
     fig, ax = plt.subplots(figsize=(12, 12))
     # dxp.count('emotion', data=current_dataset, split='sentiment', normalize='emotion')
     sns.catplot(data=current_dataset,x='emotion',hue='sentiment',kind='count',size=7,aspect=1.5)
+    plt.xticks(rotation=45)
     st.pyplot()
     st.write("Les sentiments detectés ne correspondent pas toujours aux émotions associés. Notemment les émotions négatives comme la colère, la tristesse ou l'inquiètude sont perçus aussi bien de manière positive, négative ou neutre.")
 
@@ -140,6 +143,8 @@ def page_data():
     NUM_TOP_WORDS = 20
     top_20_before = hero.visualization.top_words(current_dataset['content']).head(NUM_TOP_WORDS)
     top_20_after = hero.visualization.top_words(current_dataset['clean_content']).head(NUM_TOP_WORDS)
+
+    st.write(current_dataset.head(10))
 
     fig, ax = plt.subplots(figsize=(12, 12))
     top_20_before.plot.bar(rot=90)
@@ -299,12 +304,14 @@ def ml(title, model):
     model, X_test_tf, y_test, y_pred, _ = build_model(current_dataset, model, title.lower())
     st.write('Accuracy Score - {}'.format(accuracy_score(y_test, y_pred)))
     st.write('Recall Score (macro) - {}'.format(recall_score(y_test, y_pred,average='macro')))
-    fig, ax = plt.subplots(figsize=(10, 10))
+    fig, ax = plt.subplots(figsize=(20, 20))
+    sns.set(font_scale=1.5)
     plot_confusion_matrix(model,X_test_tf,
                         y_test,
                         normalize='true',
+                        cmap=plt.cm.Greens,
                         ax=ax)
-    st.pyplot()
+    st.pyplot(fig)
     st.text('Model Report:\n ' + classification_report(y_test, y_pred))
     if current_dataset_name == "Kaggle":
         st.markdown("""
@@ -341,9 +348,9 @@ st.sidebar.markdown("### 🤖 Emotions Detector")
 start_time = time.time()
 kaggle, dataworld = load_data()
 app = Page()
+app.add_page("Data Analyse", page_data)
 app.add_page("Detector", page_search)
 app.add_page("TabNet", make_tabnet)
-app.add_page("Data Analyse", page_data)
 app.add_page("Linear Support Vector", make_svc)
 app.add_page("Naive Bayes", make_nb)
 app.add_page("Logistic Regression", make_log)
